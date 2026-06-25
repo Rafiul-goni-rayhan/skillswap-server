@@ -103,25 +103,25 @@ async function run() {
 					})
 				}
 
-				// পাসওয়ার্ড পলিসি ভ্যালিডーション
-				if (password.length < 6) {
-					return res.status(400).json({
-						success: false,
-						message: 'Password must be at least 6 characters long.',
-					})
-				}
-				if (!/[A-Z]/.test(password)) {
-					return res.status(400).json({
-						success: false,
-						message: 'Password must contain at least one capital letter.',
-					})
-				}
-				if (!/[a-z]/.test(password)) {
-					return res.status(400).json({
-						success: false,
-						message: 'Password must contain at least one lowercase letter.',
-					})
-				}
+				// // পাসওয়ার্ড পলিসি ভ্যালিডーション
+				// if (password.length < 6) {
+				// 	return res.status(400).json({
+				// 		success: false,
+				// 		message: 'Password must be at least 6 characters long.',
+				// 	})
+				// }
+				// if (!/[A-Z]/.test(password)) {
+				// 	return res.status(400).json({
+				// 		success: false,
+				// 		message: 'Password must contain at least one capital letter.',
+				// 	})
+				// }
+				// if (!/[a-z]/.test(password)) {
+				// 	return res.status(400).json({
+				// 		success: false,
+				// 		message: 'Password must contain at least one lowercase letter.',
+				// 	})
+				// }
 
 				const newUser = {
 					name: name.trim(),
