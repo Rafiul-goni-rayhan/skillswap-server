@@ -1,3 +1,6 @@
+
+
+
 const dns = require('node:dns')
 dns.setServers(['1.1.1.1', '1.0.0.1'])
 const express = require('express')
@@ -27,30 +30,64 @@ app.use(cookieParser())
 // -------------------------------------------------------------------------
 // 🛡️ ব্যাকএন্ড ভেরিফিকেশন মিডলওয়্যার (Challenge 2: JWT Verification)
 // -------------------------------------------------------------------------
-const verifyToken = (req, res, next) => {
-	const token = req.cookies?.token
+// -------------------------------------------------------------------------
+// 🛡️ ব্যাকএন্ড ভেরিফিকেশন মিডলওয়্যার (ম্যানুয়াল JWT + Better-Auth সেশন সাপোর্ট)
+// -------------------------------------------------------------------------
+const verifyToken = async (req, res, next) => {
+    // ১. প্রথমে ম্যানুয়াল লগইনের কাস্টম টোকেন চেক করা
+    const token = req.cookies?.token
 
-	if (!token) {
-		return res
-			.status(401)
-			.json({ success: false, message: 'Unauthorized access. Token missing.' })
-	}
+    if (token) {
+        return jwt.verify(
+            token,
+            process.env.JWT_SECRET || 'super-secret-key',
+            async (err, decoded) => {
+                if (err) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Forbidden access. Invalid or expired token.',
+                    })
+                }
+                req.user = decoded // ম্যানুয়াল লগইন ইউজার সেট
+                return next()
+            },
+        )
+    }
 
-	jwt.verify(
-		token,
-		process.env.JWT_SECRET || 'super-secret-key',
-		(err, decoded) => {
-			if (err) {
-				return res.status(403).json({
-					success: false,
-					message: 'Forbidden access. Invalid or expired token.',
-				})
-			}
+    // ২. টোকেন না থাকলে চেক করা গুগল লগইন (Better-Auth) সেশন আছে কি না
+    try {
+        const session = await auth.getSession({ headers: req.headers })
+        
+        if (session && session.user) {
+            // সেশনের ইমেইল দিয়ে মঙ্গোডিবির মেইন 'users' কালেকশন থেকে ডাটা আনা
+            const dbUser = await usersCollection.findOne({ 
+                email: session.user.email.trim() 
+            });
 
-			req.user = decoded // টোকেন ঠিক থাকলে ইউজারের ডাটা সেট করা
-			next()
-		},
-	)
+            if (dbUser) {
+                req.user = {
+                    id: dbUser._id, // মঙ্গোডিবির ওরিজনাল ObjectId পাস হবে
+                    email: dbUser.email,
+                    role: dbUser.role || 'client' // ডাটাবেজের আসল রোল
+                }
+                return next()
+            } else {
+                req.user = {
+                    id: session.user.id,
+                    email: session.user.email,
+                    role: session.user.role || 'client'
+                }
+                return next()
+            }
+        }
+    } catch (sessionErr) {
+        console.error("Better-Auth session verification error in middleware:", sessionErr)
+    }
+
+    // ৩. দুটি অথ মেকানিজমই যদি ফেইল করে
+    return res
+        .status(401)
+        .json({ success: false, message: 'Unauthorized access. Token or Session missing.' })
 }
 
 const client = new MongoClient(uri, {
@@ -347,56 +384,142 @@ async function run() {
 					.json({ success: false, message: 'Internal server error.' })
 			}
 		})
+// ৫.১. গ্লোবাল ফ্রিল্যান্সার তালিকা গেট করার এপিআই
+// -------------------------------------------------------------------------
+app.get('/api/freelancers', async (req, res) => {
+    try {
+        const { page = 1, limit = 6, search = '', category = '' } = req.query
+        const query = { role: 'freelancer', isBlocked: false }
 
+        if (search) {
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } },
+            ]
+        }
+
+        // 🎯 ফিক্সড ক্যাটাগরি ম্যাপিং: ডেভেলপমেন্ট বা ডিজাইন সিলেক্ট করলে যেন রিলেটেড স্কিলগুলো খুঁজে পায়
+        if (category && category !== 'All') {
+            if (category.toLowerCase() === 'development') {
+                query.skills = { $in: [/react/i, /next\.js/i, /node\.js/i, /python/i, /django/i, /javascript/i, /php/i, /wordpress/i] }
+            } else if (category.toLowerCase() === 'design') {
+                query.skills = { $in: [/figma/i, /ui\/ux/i, /adobe/i] }
+            } else if (category.toLowerCase() === 'marketing') {
+                query.skills = { $in: [/seo/i, /marketing/i, /content/i] }
+            } else {
+                query.skills = { $in: [new RegExp(category, 'i')] }
+            }
+        }
+
+        const pageNumber = parseInt(page)
+        const limitNumber = parseInt(limit)
+        const skip = (pageNumber - 1) * limitNumber
+
+        const totalCount = await usersCollection.countDocuments(query)
+        const freelancers = await usersCollection
+            .find(query)
+            .project({ password: 0 })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limitNumber)
+            .toArray()
+
+        return res.status(200).json({
+            success: true,
+            data: freelancers,
+            meta: {
+                totalCount,
+                totalPages: Math.ceil(totalCount / limitNumber),
+                currentPage: pageNumber,
+                limit: limitNumber,
+            },
+        })
+    } catch (error) {
+        console.error('Get Freelancers Error:', error)
+        return res
+            .status(500)
+            .json({ success: false, message: 'Internal server error.' })
+    }
+})
+// 🎯 ৫.২. নির্দিষ্ট আইডি দিয়ে সিঙ্গেল ফ্রিল্যান্সার প্রোফাইল গেট করার এপিআই
+// -------------------------------------------------------------------------
+app.get('/api/freelancers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // মঙ্গোডিবি আইডি ভ্যালিড কি না চেক করা
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid freelancer ID format.' });
+        }
+
+        // আইডির মাধ্যমে নির্দিষ্ট ফ্রিল্যান্সার খোঁজা
+        const freelancer = await usersCollection.findOne(
+            { _id: new ObjectId(id), role: 'freelancer' },
+            { projection: { password: 0 } } // পাসওয়ার্ড সিকিউর রাখা
+        );
+
+        if (!freelancer) {
+            return res.status(404).json({ success: false, message: 'Freelancer not found.' });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: freelancer
+        });
+    } catch (error) {
+        console.error('Get Single Freelancer Error:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error.' });
+    }
+});
 		// -------------------------------------------------------------------------
-		// ৫.১. গ্লোবাল ফ্রিল্যান্সার তালিকা গেট করার এপিআই
-		// -------------------------------------------------------------------------
-		app.get('/api/freelancers', async (req, res) => {
-			try {
-				const { page = 1, limit = 6, search = '', category = '' } = req.query
-				const query = { role: 'freelancer', isBlocked: false }
+		// // ৫.১. গ্লোবাল ফ্রিল্যান্সার তালিকা গেট করার এপিআই
+		// // -------------------------------------------------------------------------
+		// app.get('/api/freelancers', async (req, res) => {
+		// 	try {
+		// 		const { page = 1, limit = 6, search = '', category = '' } = req.query
+		// 		const query = { role: 'freelancer', isBlocked: false }
 
-				if (search) {
-					query.$or = [
-						{ name: { $regex: search, $options: 'i' } },
-						{ email: { $regex: search, $options: 'i' } },
-					]
-				}
+		// 		if (search) {
+		// 			query.$or = [
+		// 				{ name: { $regex: search, $options: 'i' } },
+		// 				{ email: { $regex: search, $options: 'i' } },
+		// 			]
+		// 		}
 
-				if (category && category !== 'All') {
-					query.skills = { $in: [new RegExp(category, 'i')] }
-				}
+		// 		if (category && category !== 'All') {
+		// 			query.skills = { $in: [new RegExp(category, 'i')] }
+		// 		}
 
-				const pageNumber = parseInt(page)
-				const limitNumber = parseInt(limit)
-				const skip = (pageNumber - 1) * limitNumber
+		// 		const pageNumber = parseInt(page)
+		// 		const limitNumber = parseInt(limit)
+		// 		const skip = (pageNumber - 1) * limitNumber
 
-				const totalCount = await usersCollection.countDocuments(query)
-				const freelancers = await usersCollection
-					.find(query)
-					.project({ password: 0 })
-					.sort({ createdAt: -1 })
-					.skip(skip)
-					.limit(limitNumber)
-					.toArray()
+		// 		const totalCount = await usersCollection.countDocuments(query)
+		// 		const freelancers = await usersCollection
+		// 			.find(query)
+		// 			.project({ password: 0 })
+		// 			.sort({ createdAt: -1 })
+		// 			.skip(skip)
+		// 			.limit(limitNumber)
+		// 			.toArray()
 
-				return res.status(200).json({
-					success: true,
-					data: freelancers,
-					meta: {
-						totalCount,
-						totalPages: Math.ceil(totalCount / limitNumber),
-						currentPage: pageNumber,
-						limit: limitNumber,
-					},
-				})
-			} catch (error) {
-				console.error('Get Freelancers Error:', error)
-				return res
-					.status(500)
-					.json({ success: false, message: 'Internal server error.' })
-			}
-		})
+		// 		return res.status(200).json({
+		// 			success: true,
+		// 			data: freelancers,
+		// 			meta: {
+		// 				totalCount,
+		// 				totalPages: Math.ceil(totalCount / limitNumber),
+		// 				currentPage: pageNumber,
+		// 				limit: limitNumber,
+		// 			},
+		// 		})
+		// 	} catch (error) {
+		// 		console.error('Get Freelancers Error:', error)
+		// 		return res
+		// 			.status(500)
+		// 			.json({ success: false, message: 'Internal server error.' })
+		// 	}
+		// })
 
 		// -------------------------------------------------------------------------
 		// ৫.২. হোম পেজের ডাইনামিক ডাটা গেট করার এপিআই
