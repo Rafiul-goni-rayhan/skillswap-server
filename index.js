@@ -24,18 +24,10 @@ const PORT = process.env.PORT || 5000
 app.use(cors({
   origin: "http://localhost:3000",
   credentials: true,
-//   methods: ["GET", "POST", "PUT", "DELETE"],
-//   allowedHeaders: ["Content-Type", "Authorization"]
+
 }));
 
 
-// CORS কনফিগারেশন
-// app.use(
-// 	cors({
-// 		credentials: true,
-// 		origin: [process.env.CLIENT_URL || 'http://localhost:3000'],
-// 	}),
-// )
 app.use(express.json())
 app.use(cookieParser())
 
