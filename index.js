@@ -92,20 +92,7 @@ async function run() {
 
         // ... collections initialization ...
 
-// 🎯 Better-Auth মেইন রুট হ্যান্ডলার (অন্য সব API-এর ওপরে থাকবে)
-// app.all("/api/auth", (req, res) => {
-//     if (!auth) {
-//         return res.status(500).json({ success: false, message: "Auth system not initialized yet." });
-//     }
-//     return auth.handler(req, res);
-// });
 
-// ... এর নিচে আপনার অন্যান্য সাধারণ API রুটগুলো থাকবে (যেমন: /api/freelancers, /api/home-data) ...
-
-
-		// -------------------------------------------------------------------------
-		// ১. ইউজার রেজিস্ট্রেশন এপিআই
-		// -------------------------------------------------------------------------
 	app.post('/api/register', async (req, res) => {
     try {
         const { name, email, image, password, role } = req.body
