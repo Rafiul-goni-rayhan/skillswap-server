@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000","https://skillswap-client-virid.vercel.app"],
     credentials: true,
   }),
 );
@@ -268,52 +268,41 @@ async function run() {
     // })
 
     // -------------------------------------------------------------------------
-    // ৪. নতুন টাস্ক বা জব পোস্ট করার এপিআই (AUTH FIXED)
-    // -------------------------------------------------------------------------
-    app.post("/api/tasks", verifyToken, async (req, res) => {
-      // 🎯 ফিক্স: verifyToken যোগ করা হয়েছে
-      try {
-        if (!req.user || req.user.role !== "client") {
-          return res.status(403).json({
-            success: false,
-            message: "Forbidden. Only active clients can post tasks.",
-          });
-        }
+   // 🎯 verifyToken পুরোপুরি বাদ দেওয়া হলো (ওপেন ও সিঙ্কড মোড)
+app.post("/api/tasks", async (req, res) => {
+  try {
+    const { title, category, description, budget, deadline, client_email } = req.body;
 
-        const { title, category, description, budget, deadline } = req.body;
+    if (!title || !category || !description || !budget || !deadline || !client_email) {
+      return res.status(400).json({
+        success: false,
+        message: "Backend Rejected: All required fields must be provided.",
+      });
+    }
 
-        if (!title || !category || !description || !budget || !deadline) {
-          return res.status(400).json({
-            success: false,
-            message: "All required fields must be provided.",
-          });
-        }
+    const newTask = {
+      title: title.trim(),
+      category: category.trim(),
+      description: description.trim(),
+      budget: parseFloat(budget),
+      deadline: Number(deadline), 
+      client_email: client_email.trim(), // সরাসরি ফ্রন্টএন্ড থেকে পাঠানো ইমেইল
+      status: "open",
+      deliverable_url: "",
+      createdAt: new Date(),
+    };
 
-        const newTask = {
-          title: title.trim(),
-          category: category.trim(),
-          description: description.trim(),
-          budget: parseFloat(budget),
-          deadline: new Date(deadline),
-          client_email: req.user.email,
-          status: "open",
-          deliverable_url: "",
-          createdAt: new Date(),
-        };
-
-        const result = await tasksCollection.insertOne(newTask);
-        return res.status(201).json({
-          success: true,
-          message: "Task posted successfully!",
-          taskId: result.insertedId,
-        });
-      } catch (error) {
-        console.error("Task Post Error:", error);
-        return res
-          .status(500)
-          .json({ success: false, message: "Internal server error." });
-      }
+    const result = await tasksCollection.insertOne(newTask);
+    return res.status(201).json({
+      success: true,
+      message: "Task posted successfully!",
+      taskId: result.insertedId,
     });
+  } catch (error) {
+    console.error("Task Post Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
 
     // -------------------------------------------------------------------------
     // ৫. Browse Tasks API: Pagination + Search + Category (verifyToken সরানো হয়েছে)
@@ -984,6 +973,7 @@ async function run() {
 
     // -------------------------------------------------------------------------
     // ১০.১. স্ট্রাইপ চেকআউট সেশন তৈরি করার API
+    // 🎯 ১০.১. স্ট্রাইপ চেকআউট সেশন তৈরি করার API (ডাইনামিক ডোমেইন ফিক্সড)
     // -------------------------------------------------------------------------
     app.post("/api/create-checkout-session", async (req, res) => {
       try {
@@ -999,6 +989,11 @@ async function run() {
               "Backend Rejected: Missing required checkout parameters or invalid amount size.",
           });
         }
+
+        // 🎯 প্রোডাকশন (Vercel) এবং লোকাল এনভায়রনমেন্টের জন্য ডাইনামিক অরিজিন সেটআপ
+        const originUrl = process.env.NODE_ENV === "production"
+          ? "https://skillswap-client-virid.vercel.app" // 👈 আপনার লাইভ ভার্সেল লিংক
+          : "http://localhost:3000";
 
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ["card"],
@@ -1016,8 +1011,9 @@ async function run() {
             },
           ],
           mode: "payment",
-          success_url: `http://localhost:3000/payment/success?session_id={CHECKOUT_SESSION_ID}&proposalId=${proposalId}`,
-          cancel_url: `http://localhost:3000/dashboard/client`,
+          // 🎯 লোকালহোস্টের জায়গায় ডাইনামিক originUrl বসানো হয়েছে
+          success_url: `${originUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}&proposalId=${proposalId}`,
+          cancel_url: `${originUrl}/dashboard/client`,
         });
 
         return res.status(200).json({ success: true, url: session.url });
