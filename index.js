@@ -1,6 +1,9 @@
 
 
 
+
+
+
 const dns = require('node:dns')
 dns.setServers(['1.1.1.1', '1.0.0.1'])
 const express = require('express')
@@ -17,13 +20,22 @@ const uri = process.env.MONGODB_URI
 const app = express()
 const PORT = process.env.PORT || 5000
 
+
+app.use(cors({
+  origin: "http://localhost:3000",
+  credentials: true,
+//   methods: ["GET", "POST", "PUT", "DELETE"],
+//   allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+
 // CORS কনফিগারেশন
-app.use(
-	cors({
-		credentials: true,
-		origin: [process.env.CLIENT_URL || 'http://localhost:3000'],
-	}),
-)
+// app.use(
+// 	cors({
+// 		credentials: true,
+// 		origin: [process.env.CLIENT_URL || 'http://localhost:3000'],
+// 	}),
+// )
 app.use(express.json())
 app.use(cookieParser())
 
@@ -34,7 +46,7 @@ app.use(cookieParser())
 // 🛡️ ব্যাকএন্ড ভেরিফিকেশন মিডলওয়্যার (ম্যানুয়াল JWT + Better-Auth সেশন সাপোর্ট)
 // -------------------------------------------------------------------------
 const verifyToken = async (req, res, next) => {
-    // ১. প্রথমে ম্যানুয়াল লগইনের কাস্টম টোকেন চেক করা
+    // ১. প্রথমে ম্যানুয়াল লগইনের কাস্টম JWT টোকেন চেক করা
     const token = req.cookies?.token
 
     if (token) {
@@ -54,41 +66,106 @@ const verifyToken = async (req, res, next) => {
         )
     }
 
-    // ২. টোকেন না থাকলে চেক করা গুগল লগইন (Better-Auth) সেশন আছে কি না
-    try {
-        const session = await auth.getSession({ headers: req.headers })
+    // ২. টোকেন না থাকলে চেক করা গুগল/সোশ্যাল লগইন (Better-Auth) সেশন
+    // try {
+    //     if (!auth) {
+    //         return res.status(500).json({ success: false, message: "Auth system not initialized yet." })
+    //     }
+
+    //     // Better-Auth থেকে সেশন রিড করা
+    //     const session = await auth.api.getSession({ headers: req.headers })
         
-        if (session && session.user) {
-            // সেশনের ইমেইল দিয়ে মঙ্গোডিবির মেইন 'users' কালেকশন থেকে ডাটা আনা
-            const dbUser = await usersCollection.findOne({ 
-                email: session.user.email.trim() 
-            });
+    //     if (session && session.user) {
+    //         // 🎯 মোস্ট ক্রিশিয়াল ফিক্স: সেশনের ইমেইল দিয়ে মঙ্গোডিবির মেইন 'users' কালেকশন থেকে ফ্রেশ ডাটা আনা
+    //         const dbUser = await usersCollection.findOne({ 
+    //             email: session.user.email.trim() 
+    //         });
 
-            if (dbUser) {
-                req.user = {
-                    id: dbUser._id, // মঙ্গোডিবির ওরিজনাল ObjectId পাস হবে
-                    email: dbUser.email,
-                    role: dbUser.role || 'client' // ডাটাবেজের আসল রোল
-                }
-                return next()
-            } else {
-                req.user = {
-                    id: session.user.id,
-                    email: session.user.email,
-                    role: session.user.role || 'client'
-                }
-                return next()
-            }
-        }
-    } catch (sessionErr) {
-        console.error("Better-Auth session verification error in middleware:", sessionErr)
-    }
+    //         if (dbUser) {
+    //             // ডাটাবেজে যে রোল আছে (যেমন: freelancer বা client), সেটাই এখানে সেট হবে
+    //             req.user = {
+    //                 id: dbUser._id, 
+    //                 email: dbUser.email,
+    //                 role: dbUser.role || session.user.role || 'freelancer' // ডাইনামিক রোল অ্যাসাইনমেন্ট
+    //             }
+    //             return next()
+    //         } else {
+    //             // ডাটাবেজে ইউজার না পাওয়া গেলে সেশনের ডিফল্ট ডাটা ব্যবহার করা
+    //             req.user = {
+    //                 id: session.user.id,
+    //                 email: session.user.email,
+    //                 role: session.user.role || 'freelancer'
+    //             }
+    //             return next()
+    //         }
+    //     }
+    // } catch (sessionErr) {
+    //     console.error("Better-Auth session verification error in middleware:", sessionErr)
+    // }
 
-    // ৩. দুটি অথ মেকানিজমই যদি ফেইল করে
+    // ৩. কোনো অথ মেকানিজমই যদি সেশন খুঁজে না পায়
     return res
         .status(401)
         .json({ success: false, message: 'Unauthorized access. Token or Session missing.' })
 }
+
+
+// const verifyToken = async (req, res, next) => {
+//     // ১. প্রথমে ম্যানুয়াল লগইনের কাস্টম টোকেন চেক করা
+//     const token = req.cookies?.token
+
+//     if (token) {
+//         return jwt.verify(
+//             token,
+//             process.env.JWT_SECRET || 'super-secret-key',
+//             async (err, decoded) => {
+//                 if (err) {
+//                     return res.status(403).json({
+//                         success: false,
+//                         message: 'Forbidden access. Invalid or expired token.',
+//                     })
+//                 }
+//                 req.user = decoded // ম্যানুয়াল লগইন ইউজার সেট
+//                 return next()
+//             },
+//         )
+//     }
+
+//     // ২. টোকেন না থাকলে চেক করা গুগল লগইন (Better-Auth) সেশন আছে কি না
+//     try {
+//         const session = await auth.getSession({ headers: req.headers })
+        
+//         if (session && session.user) {
+//             // সেশনের ইমেইল দিয়ে মঙ্গোডিবির মেইন 'users' কালেকশন থেকে ডাটা আনা
+//             const dbUser = await usersCollection.findOne({ 
+//                 email: session.user.email.trim() 
+//             });
+
+//             if (dbUser) {
+//                 req.user = {
+//                     id: dbUser._id, // মঙ্গোডিবির ওরিজনাল ObjectId পাস হবে
+//                     email: dbUser.email,
+//                     role: dbUser.role || 'client' // ডাটাবেজের আসল রোল
+//                 }
+//                 return next()
+//             } else {
+//                 req.user = {
+//                     id: session.user.id,
+//                     email: session.user.email,
+//                     role: session.user.role || 'client'
+//                 }
+//                 return next()
+//             }
+//         }
+//     } catch (sessionErr) {
+//         console.error("Better-Auth session verification error in middleware:", sessionErr)
+//     }
+
+//     // ৩. দুটি অথ মেকানিজমই যদি ফেইল করে
+//     return res
+//         .status(401)
+//         .json({ success: false, message: 'Unauthorized access. Token or Session missing.' })
+// }
 
 const client = new MongoClient(uri, {
 	serverApi: {
@@ -116,76 +193,72 @@ async function run() {
 		paymentsCollection = db.collection('payments')
 		reviewsCollection = db.collection('reviews')
 
+        // ... collections initialization ...
+
+// 🎯 Better-Auth মেইন রুট হ্যান্ডলার (অন্য সব API-এর ওপরে থাকবে)
+// app.all("/api/auth", (req, res) => {
+//     if (!auth) {
+//         return res.status(500).json({ success: false, message: "Auth system not initialized yet." });
+//     }
+//     return auth.handler(req, res);
+// });
+
+// ... এর নিচে আপনার অন্যান্য সাধারণ API রুটগুলো থাকবে (যেমন: /api/freelancers, /api/home-data) ...
+
+
 		// -------------------------------------------------------------------------
 		// ১. ইউজার রেজিস্ট্রেশন এপিআই
 		// -------------------------------------------------------------------------
-		app.post('/api/register', async (req, res) => {
-			try {
-				const { name, email, image, password, role } = req.body
+	app.post('/api/register', async (req, res) => {
+    try {
+        const { name, email, image, password, role } = req.body
 
-				if (!name || !email || !image || !password) {
-					return res.status(400).json({
-						success: false,
-						message: 'All fields (Name, Email, Image, Password) are required.',
-					})
-				}
+        // ১. বেসিক ভ্যালিডেশন: শুধুমাত্র রিকোয়েস্টে ফিল্ডগুলো আছে কি না চেক করবে
+        if (!name || !email || !image || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'All fields (Name, Email, Image, Password) are required.',
+            })
+        }
 
-				const existingUser = await usersCollection.findOne({
-					email: email.trim(),
-				})
-				if (existingUser) {
-					return res.status(400).json({
-						success: false,
-						message: 'User already exists with this email.',
-					})
-				}
+        // ২. ডুপ্লিকেট ইউজার চেক
+        const existingUser = await usersCollection.findOne({
+            email: email.trim(),
+        })
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: 'User already exists with this email.',
+            })
+        }
 
-				// // পাসওয়ার্ড পলিসি ভ্যালিডーション
-				// if (password.length < 6) {
-				// 	return res.status(400).json({
-				// 		success: false,
-				// 		message: 'Password must be at least 6 characters long.',
-				// 	})
-				// }
-				// if (!/[A-Z]/.test(password)) {
-				// 	return res.status(400).json({
-				// 		success: false,
-				// 		message: 'Password must contain at least one capital letter.',
-				// 	})
-				// }
-				// if (!/[a-z]/.test(password)) {
-				// 	return res.status(400).json({
-				// 		success: false,
-				// 		message: 'Password must contain at least one lowercase letter.',
-				// 	})
-				// }
+        // 🚀 পাসওয়ার্ড পলিসির সব ধরনের বাধা (যেমন: Capital letter, Number) পুরোপুরি রিমুভড।
+        // ইউজার ইনপুটে যে পাসওয়ার্ডই দিক না কেন, সেটিই সরাসরি ডাটাবেজে যাবে।
+        const newUser = {
+            name: name.trim(),
+            email: email.trim(),
+            image: image.trim(),
+            password: password.trim(), // যা ইচ্ছা তা পাসওয়ার্ড এখানে চলে আসবে
+            role: role === 'freelancer' ? 'freelancer' : 'client',
+            skills: [],
+            bio: '',
+            isBlocked: false,
+            createdAt: new Date(),
+        }
 
-				const newUser = {
-					name: name.trim(),
-					email: email.trim(),
-					image: image.trim(),
-					password: password.trim(),
-					role: role === 'freelancer' ? 'freelancer' : 'client',
-					skills: [],
-					bio: '',
-					isBlocked: false,
-					createdAt: new Date(),
-				}
-
-				const result = await usersCollection.insertOne(newUser)
-				return res.status(201).json({
-					success: true,
-					message: 'User registered successfully!',
-					data: result,
-				})
-			} catch (error) {
-				console.error('Register API Error:', error)
-				return res
-					.status(500)
-					.json({ success: false, message: 'Internal server error.' })
-			}
-		})
-
+        const result = await usersCollection.insertOne(newUser)
+        return res.status(201).json({
+            success: true,
+            message: 'User registered successfully!',
+            data: result,
+        })
+    } catch (error) {
+        console.error('Register API Error:', error)
+        return res
+            .status(500)
+            .json({ success: false, message: 'Internal server error.' })
+    }
+})
 		// -------------------------------------------------------------------------
 		// ২. ইউজার লগইন এপিআই এবং JWT জেনারেশন
 		// -------------------------------------------------------------------------
@@ -265,28 +338,63 @@ async function run() {
 		// -------------------------------------------------------------------------
 		// ৩. ইউজার লগআউট এপিআই (HTML এরর প্রুফ ও জেসন রেডি)
 		// -------------------------------------------------------------------------
-		app.post('/api/logout', async (req, res) => {
-			try {
-				// লগইন করার সময় যে যে অপশন দিয়ে কুকি সেট করা হয়েছিল, ঠিক সেই অপশন দিয়েই ক্লিয়ার করতে হবে
-				res.clearCookie('token', {
-					httpOnly: true,
-					secure: process.env.NODE_ENV === 'production',
-					sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-					path: '/', // 🎯 পাথ সুনির্দিষ্ট করে দিলে ব্রাউজার কুকি ডিলিট করতে বাধ্য হয়
-				})
+		// -------------------------------------------------------------------------
+        // ৩. ইউজার লগআউট এপিআই (ম্যানুয়াল JWT + Better-Auth কুকি ক্লিয়ার মোড)
+        // -------------------------------------------------------------------------
+        app.post('/api/logout', async (req, res) => {
+            try {
+                const cookieOptions = {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+                    path: '/', // 🎯 এই পাথ ব্রাউজারকে কুকি ডিলিট করতে বাধ্য করে
+                };
 
-				// 🎯 মোস্ট ক্রিপ্টিক ফিক্স: কোনো টেক্সট বা এইচটিএমএল না, ডিরেক্ট জেসন অবজেক্ট রিটার্ন
-				return res.status(200).json({
-					success: true,
-					message: 'Logged out successfully!',
-				})
-			} catch (error) {
-				console.error('Logout Core Crash Log:', error)
-				return res
-					.status(500)
-					.json({ success: false, message: 'Internal server error.' })
-			}
-		})
+                // ১. ম্যানুয়াল লগইনের কাস্টম টোকেন কুকি ক্লিয়ার করা
+                res.clearCookie('token', cookieOptions);
+
+                // ২. Better-Auth এর স্ট্যান্ডার্ড সেশন টোকেন কুকি ক্লিয়ার করা
+                res.clearCookie('better-auth.session-token', cookieOptions);
+                
+                // ৩. Better-Auth এর সিকিউর প্রোডাকশন কুকি ক্লিয়ার করা (যদি থাকে)
+                res.clearCookie('__Secure-better-auth.session-token', cookieOptions);
+
+                // 🎯 পিওর জেসন রেসপন্স যাতে ফ্রন্টএন্ডের ফেচ গার্ড ব্রেক না করে
+                return res.status(200).json({
+                    success: true,
+                    message: 'Logged out successfully from all sessions!',
+                });
+            } catch (error) {
+                console.error('Logout Core Crash Log:', error);
+                return res.status(500).json({ 
+                    success: false, 
+                    message: 'Internal server error during logout.' 
+                });
+            }
+        });
+        
+        // app.post('/api/logout', async (req, res) => {
+		// 	try {
+		// 		// লগইন করার সময় যে যে অপশন দিয়ে কুকি সেট করা হয়েছিল, ঠিক সেই অপশন দিয়েই ক্লিয়ার করতে হবে
+		// 		res.clearCookie('token', {
+		// 			httpOnly: true,
+		// 			secure: process.env.NODE_ENV === 'production',
+		// 			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+		// 			path: '/', // 🎯 পাথ সুনির্দিষ্ট করে দিলে ব্রাউজার কুকি ডিলিট করতে বাধ্য হয়
+		// 		})
+
+		// 		// 🎯 মোস্ট ক্রিপ্টিক ফিক্স: কোনো টেক্সট বা এইচটিএমএল না, ডিরেক্ট জেসন অবজেক্ট রিটার্ন
+		// 		return res.status(200).json({
+		// 			success: true,
+		// 			message: 'Logged out successfully!',
+		// 		})
+		// 	} catch (error) {
+		// 		console.error('Logout Core Crash Log:', error)
+		// 		return res
+		// 			.status(500)
+		// 			.json({ success: false, message: 'Internal server error.' })
+		// 	}
+		// })
 
 		// -------------------------------------------------------------------------
 		// ৪. নতুন টাস্ক বা জব পোস্ট করার এপিআই (AUTH FIXED)
@@ -471,155 +579,123 @@ app.get('/api/freelancers/:id', async (req, res) => {
         return res.status(500).json({ success: false, message: 'Internal server error.' });
     }
 });
-		// -------------------------------------------------------------------------
-		// // ৫.১. গ্লোবাল ফ্রিল্যান্সার তালিকা গেট করার এপিআই
-		// // -------------------------------------------------------------------------
-		// app.get('/api/freelancers', async (req, res) => {
-		// 	try {
-		// 		const { page = 1, limit = 6, search = '', category = '' } = req.query
-		// 		const query = { role: 'freelancer', isBlocked: false }
-
-		// 		if (search) {
-		// 			query.$or = [
-		// 				{ name: { $regex: search, $options: 'i' } },
-		// 				{ email: { $regex: search, $options: 'i' } },
-		// 			]
-		// 		}
-
-		// 		if (category && category !== 'All') {
-		// 			query.skills = { $in: [new RegExp(category, 'i')] }
-		// 		}
-
-		// 		const pageNumber = parseInt(page)
-		// 		const limitNumber = parseInt(limit)
-		// 		const skip = (pageNumber - 1) * limitNumber
-
-		// 		const totalCount = await usersCollection.countDocuments(query)
-		// 		const freelancers = await usersCollection
-		// 			.find(query)
-		// 			.project({ password: 0 })
-		// 			.sort({ createdAt: -1 })
-		// 			.skip(skip)
-		// 			.limit(limitNumber)
-		// 			.toArray()
-
-		// 		return res.status(200).json({
-		// 			success: true,
-		// 			data: freelancers,
-		// 			meta: {
-		// 				totalCount,
-		// 				totalPages: Math.ceil(totalCount / limitNumber),
-		// 				currentPage: pageNumber,
-		// 				limit: limitNumber,
-		// 			},
-		// 		})
-		// 	} catch (error) {
-		// 		console.error('Get Freelancers Error:', error)
-		// 		return res
-		// 			.status(500)
-		// 			.json({ success: false, message: 'Internal server error.' })
-		// 	}
-		// })
-
+	
 		// -------------------------------------------------------------------------
 		// ৫.২. হোম পেজের ডাইনামিক ডাটা গেট করার এপিআই
 		// -------------------------------------------------------------------------
-		app.get('/api/home-data', async (req, res) => {
-			try {
-				const latestTasks = await tasksCollection
-					.find({ status: 'open' })
-					.sort({ createdAt: -1 })
-					.limit(9)
-					.toArray()
+	app.get('/api/home-data', async (req, res) => {
+    try {
+        const latestTasks = await tasksCollection
+            .find({ status: 'open' })
+            .sort({ createdAt: -1 })
+            .limit(9)
+            .toArray()
 
-				const topFreelancers = await usersCollection
-					.find({ role: 'freelancer', isBlocked: false })
-					.sort({ averageRating: -1, ratingCount: -1 })
-					.limit(3)
-					.project({ password: 0 })
-					.toArray()
+        // 🎯 একদম সহজ সমাধান: যাদের রেটিং ফিল্ড আছে তাদের মধ্য থেকে টপ ৩ জনকে আনবে
+        const topFreelancers = await usersCollection
+            .find({ 
+                role: 'freelancer', 
+                isBlocked: false,
+                averageRating: { $exists: true } // 👈 শুধু যাদের রেটিং ডাটা আছে তাদের ফিল্টার করবে
+            })
+            .sort({ averageRating: -1, ratingCount: -1 })
+            .limit(3)
+            .project({ password: 0 })
+            .toArray()
 
-				return res.status(200).json({
-					success: true,
-					tasks: latestTasks,
-					freelancers: topFreelancers,
-				})
-			} catch (error) {
-				console.error('Home Data API Error:', error)
-				return res
-					.status(500)
-					.json({ success: false, message: 'Internal server error.' })
-			}
-		})
+        // 💡 যদি নতুন ডাটাবেজ হয় আর কারো রেটিং না থাকে, তবে যেন খালি না দেখিয়ে যেকোনো ৩ জন ফ্রিল্যান্সারকে দেখায়
+        if (topFreelancers.length === 0) {
+            const fallbackFreelancers = await usersCollection
+                .find({ role: 'freelancer', isBlocked: false })
+                .limit(3)
+                .project({ password: 0 })
+                .toArray();
+                
+            return res.status(200).json({
+                success: true,
+                tasks: latestTasks,
+                freelancers: fallbackFreelancers,
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            tasks: latestTasks,
+            freelancers: topFreelancers,
+        })
+    } catch (error) {
+        console.error('Home Data API Error:', error)
+        return res
+            .status(500)
+            .json({ success: false, message: 'Internal server error.' })
+    }
+})
+
 
 		// -------------------------------------------------------------------------
 		// 🎯 ৫.২.১ আলটিমেট রেটিং এপিআই: আলাদা কালেকশন (reviews) তৈরি ও ইউজার আপডেট
 		// -------------------------------------------------------------------------
 		app.post('/api/reviews', async (req, res) => {
-			try {
-				const { task_id, reviewer_email, reviewee_email, rating, comment } =
-					req.body
+    try {
+        const { task_id, reviewer_email, reviewee_email, rating, comment } = req.body;
 
-				if (!reviewee_email || !rating) {
-					return res.status(400).json({
-						success: false,
-						message: 'Reviewee email and rating value are required.',
-					})
-				}
+        if (!reviewee_email || !rating) {
+            return res.status(400).json({
+                success: false,
+                message: 'Reviewee email and rating value are required.',
+            });
+        }
 
-				// ১. 'reviews' কালেকশনে নতুন ডকুমেন্ট বা ব্লক ইনসার্ট করা (এর ফলে কম্পাসে আলাদা ফোল্ডার তৈরি হবে)
-				const reviewDoc = {
-					task_id: task_id || '',
-					reviewer_email: reviewer_email || '',
-					reviewee_email: reviewee_email.trim(),
-					rating: parseFloat(rating),
-					comment: comment || '',
-					created_at: new Date(),
-				}
-				const reviewResult = await reviewsCollection.insertOne(reviewDoc)
+        const parsedRating = parseFloat(rating); // 🎯 রেটিংকে একবারে ফ্লোট করে নেওয়া হলো সেফটির জন্য
 
-				// ২. এবার ফ্রিল্যান্সার ইউজারের প্রোফাইল খুঁজে বের করে গড় রেটিং আপডেট করা
-				const query = {
-					email: { $regex: `^${reviewee_email.trim()}$`, $options: 'i' },
-				}
-				const freelancer = await usersCollection.findOne(query)
+        // ১. 'reviews' কালেকশনে নতুন ডকুমেন্ট ইনসার্ট করা
+        const reviewDoc = {
+            task_id: task_id || '',
+            reviewer_email: reviewer_email || '',
+            reviewee_email: reviewee_email.trim(),
+            rating: parsedRating,
+            comment: comment || '',
+            created_at: new Date(),
+        };
+        const reviewResult = await reviewsCollection.insertOne(reviewDoc);
 
-				if (freelancer) {
-					const oldTotal = freelancer.totalRating || 0
-					const { ratingCount: oldCount = 0 } = freelancer
+        // ২. ফ্রিল্যান্সার ইউজারের প্রোফাইল খুঁজে বের করে গড় রেটিং আপডেট করা
+        const query = {
+            email: { $regex: `^${reviewee_email.trim()}$`, $options: 'i' },
+        };
+        const freelancer = await usersCollection.findOne(query);
 
-					const currentTotal = oldTotal + parseInt(rating)
-					const currentCount = oldCount + 1
-					const currentAverage = parseFloat(
-						(currentTotal / currentCount).toFixed(1),
-					)
+        if (freelancer) {
+            const oldTotal = parseFloat(freelancer.totalRating || 0); // 🎯 সেফটি ফ্লোট পার্স
+            const oldCount = parseInt(freelancer.ratingCount || 0);
 
-					await usersCollection.updateOne(
-						{ _id: freelancer._id },
-						{
-							$set: {
-								totalRating: currentTotal,
-								ratingCount: currentCount,
-								averageRating: currentAverage,
-							},
-						},
-					)
-					console.log(
-						`💾 [Collection Created & Synced] History logged in reviews & profile updated for ${reviewee_email}`,
-					)
-				}
+            const currentTotal = oldTotal + parsedRating; // 🎯 আগের ভুলের ফিক্সড
+            const currentCount = oldCount + 1;
+            const currentAverage = parseFloat((currentTotal / currentCount).toFixed(1));
 
-				return res.status(201).json({
-					success: true,
-					message: 'Review Core Logged & Collection Updated Successfully!',
-					reviewId: reviewResult.insertedId,
-				})
-			} catch (error) {
-				console.error('Reviews Matrix Error:', error)
-				return res.status(500).json({ success: false, message: error.message })
-			}
-		})
+            await usersCollection.updateOne(
+                { _id: freelancer._id },
+                {
+                    $set: {
+                        totalRating: currentTotal,
+                        ratingCount: currentCount,
+                        averageRating: currentAverage,
+                    },
+                },
+            );
+            console.log(`💾 [Synced] History logged & profile updated for ${reviewee_email}`);
+        }
 
+        return res.status(201).json({
+            success: true,
+            message: 'Review Core Logged & Collection Updated Successfully!',
+            reviewId: reviewResult.insertedId,
+        });
+    } catch (error) {
+        console.error('Reviews Matrix Error:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 		// -------------------------------------------------------------------------
 		// ৫.৩. লগইন করা ফ্রিল্যান্সারের নিজস্ব প্রোপোজাল তালিকা (ডুপ্লিকেট রিমুভড ও ফিক্সড)
 		// -------------------------------------------------------------------------
@@ -687,100 +763,120 @@ app.get('/api/freelancers/:id', async (req, res) => {
 
 		// -------------------------------------------------------------------------
 		// ७. ফ্রিল্যান্সারদের প্রোপোজাল বা বিড সাবমিট করার API
+		// -----------------------------------------------------------------------------
+      // -------------------------------------------------------------------------
+        // 🎯 ফ্রিল্যান্সারের প্রোপোজাল সাবমিট করার API (ওপেন মোড - নো ভেরিফাই টোকেন)
+        // -------------------------------------------------------------------------
+        app.post('/api/proposals', async (req, res) => {
+            try {
+                // ফ্রন্টএন্ড থেকে পাঠানো ডাটা সরাসরি রিসিভ করা হচ্ছে
+                const { task_id, freelancer_email, proposed_budget, estimated_days, cover_note } = req.body;
+
+                if (!task_id || !freelancer_email || !proposed_budget || !estimated_days || !cover_note) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: 'Missing required fields.' 
+                    });
+                }
+
+                const newProposal = {
+                    task_id: task_id,
+                    freelancer_email: freelancer_email.trim(), // ফ্রন্টএন্ডের পাঠানো ইমেইল বসে যাবে
+                    proposed_budget: Number(proposed_budget),
+                    estimated_days: Number(estimated_days),
+                    cover_note: cover_note.trim(),
+                    status: 'pending',
+                    submitted_at: new Date()
+                };
+
+                // ডাটাবেজে ইনসার্ট
+                const result = await proposalsCollection.insertOne(newProposal);
+
+                // কাউন্টার আপডেট লজিক
+                if (result.insertedId) {
+                    const { ObjectId } = require('mongodb');
+                    try {
+                        await tasksCollection.updateOne(
+                            { _id: new ObjectId(task_id) },
+                            { $inc: { proposalsCount: 1 } }
+                        );
+                    } catch (taskErr) {
+                        console.error("Counter increment failed:", taskErr);
+                    }
+                }
+
+                return res.status(201).json({
+                    success: true,
+                    message: 'Proposal submitted successfully!',
+                    data: result
+                });
+
+            } catch (error) {
+                console.error('Open Proposal Submit Error:', error);
+                return res.status(500).json({ success: false, message: 'Internal server error.' });
+            }
+        });
+
 		// -------------------------------------------------------------------------
-		app.post('/api/proposals', verifyToken, async (req, res) => {
-			try {
-				if (req.user.role !== 'freelancer') {
-					return res.status(403).json({
-						success: false,
-						message: 'Only freelancers can submit proposals.',
-					})
-				}
-
-				const { task_id, proposed_budget, estimated_days, cover_note } =
-					req.body
-
-				if (!task_id || !proposed_budget || !estimated_days || !cover_note) {
-					return res
-						.status(400)
-						.json({ success: false, message: 'All fields are required.' })
-				}
-
-				const existingProposal = await proposalsCollection.findOne({
-					task_id: new ObjectId(task_id),
-					freelancer_email: req.user.email,
-				})
-
-				if (existingProposal) {
-					return res.status(400).json({
-						success: false,
-						message: 'You have already submitted a proposal for this task.',
-					})
-				}
-
-				const newProposal = {
-					task_id: new ObjectId(task_id),
-					freelancer_email: req.user.email,
-					proposed_budget: parseFloat(proposed_budget),
-					estimated_days: parseInt(estimated_days),
-					cover_note: cover_note.trim(),
-					status: 'pending',
-					submitted_at: new Date(),
-				}
-
-				const result = await proposalsCollection.insertOne(newProposal)
-				return res.status(201).json({
-					success: true,
-					message: 'Proposal submitted successfully!',
-					proposalId: result.insertedId,
-				})
-			} catch (error) {
-				console.error('Proposal Post Error:', error)
-				return res
-					.status(500)
-					.json({ success: false, message: 'Internal server error.' })
-			}
-		})
-
 		// -------------------------------------------------------------------------
-		// ৮. নির্দিষ্ট ক্লায়েন্টের টাস্কগুলোর বিপরীতে আসা প্রোপোজাল গেট করা
-		// -------------------------------------------------------------------------
-		app.get('/api/client/proposals', verifyToken, async (req, res) => {
-			try {
-				if (req.user.role !== 'client') {
-					return res
-						.status(403)
-						.json({ success: false, message: 'Unauthorized.' })
-				}
+        // -------------------------------------------------------------------------
+       // ৮. নির্দিষ্ট ক্লায়েন্টের টাস্কগুলোর বিপরীতে আসা প্রোপোজাল গেট করা (ওপেন মোড)
+// -------------------------------------------------------------------------
+app.get('/api/client/proposals', async (req, res) => {
+    try {
+        // 🎯 ফ্রন্টএন্ডের সাথে মিল রেখে client_email কুয়েরি প্যারামিটার থেকে নেওয়া হচ্ছে
+        const clientEmail = req.query.client_email; 
 
-				const clientTasks = await tasksCollection
-					.find({ client_email: req.user.email })
-					.toArray()
-				const taskIds = clientTasks.map((task) => task._id)
+        if (!clientEmail) {
+            return res.status(400).json({ success: false, message: 'Client email query parameter is required.' });
+        }
 
-				const proposals = await proposalsCollection
-					.find({ task_id: { $in: taskIds } })
-					.sort({ submitted_at: -1 })
-					.toArray()
+        // ১. এই ক্লায়েন্টের পোস্ট করা সব টাস্ক খুঁজে বের করা
+        const clientTasks = await tasksCollection
+            .find({ client_email: clientEmail.trim() })
+            .toArray();
 
-				const enrichedProposals = proposals.map((proposal) => {
-					const matchingTask = clientTasks.find(
-						(t) => t._id.toString() === proposal.task_id.toString(),
-					)
-					return {
-						...proposal,
-						taskTitle: matchingTask ? matchingTask.title : 'Unknown Task',
-					}
-				})
+        // ক্লায়েন্টের কোনো টাস্ক না থাকলে খালি অ্যারে ব্যাক করা
+        if (!clientTasks || clientTasks.length === 0) {
+            return res.status(200).json({ success: true, data: [] });
+        }
 
-				return res.status(200).json({ success: true, data: enrichedProposals })
-			} catch (error) {
-				console.error('Get Client Proposals Error:', error)
-				return res
-					.status(500)
-					.json({ success: false, message: 'Internal server error.' })
-			}
-		})
+        // ২. টাস্ক আইডিগুলোর অ্যারে তৈরি (ObjectId এবং String দুই ফরম্যাটেই সেফটি গার্ড)
+        const taskIds = clientTasks.map((task) => task._id);
+        const stringTaskIds = clientTasks.map((task) => task._id.toString());
+
+        // ৩. প্রপোজাল কালেকশন থেকে ওই টাস্কগুলোর সব প্রপোজাল খুঁজে বের করা
+        const proposals = await proposalsCollection
+            .find({ 
+                $or: [
+                    { task_id: { $in: taskIds } },
+                    { task_id: { $in: stringTaskIds } }
+                ]
+            })
+            .sort({ submitted_at: -1 })
+            .toArray();
+
+        // ৪. ডাটা এনরিচমেন্ট (টাস্ক টাইটেল ম্যাপ করা)
+        const enrichedProposals = proposals.map((proposal) => {
+            const matchingTask = clientTasks.find(
+                (t) => t._id.toString() === proposal.task_id?.toString(),
+            );
+            return {
+                ...proposal,
+                taskTitle: matchingTask ? matchingTask.title : 'Unknown Task',
+            };
+        });
+
+        // ফ্রন্টএন্ডে ডাটা সাকসেসফুলি পাঠানো
+        return res.status(200).json({ success: true, data: enrichedProposals });
+        
+    } catch (error) {
+        console.error('Get Client Proposals Open Route Error:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error.' });
+    }
+});
+
+
 
 		// =========================================================================
 		// 🎯 SECTION 09: COMPLETE SUPREME ADMIN CORE MODULE
@@ -1230,7 +1326,79 @@ app.get('/api/freelancers/:id', async (req, res) => {
 			}
 		})
 
-		// await client.db("admin").command({ ping: 1 });
+		const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); // আপনার স্ট্রাইপ সিক্রেট কি
+
+// স্ট্রাইপ সেশন ভেরিফিকেশন রুট
+app.post('/api/verify-payment', async (req, res) => {
+    try {
+        const { sessionId, proposalId } = req.body;
+
+        // ১. সেফটি গার্ড: রিকোয়েস্ট বডিতে প্রয়োজনীয় আইডি আছে কিনা চেক
+        if (!sessionId || !proposalId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Missing sessionId or proposalId in request body." 
+            });
+        }
+
+        // ২. স্ট্রাইপ থেকে সেশন ডিটেইলস রিট্রাইভ (Retrieve) করা
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        // ৩. পемেন্ট স্ট্যাটাস চেক করা (Paid কিনা)
+        if (session.payment_status !== 'paid') {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Payment has not been completed yet." 
+            });
+        }
+
+        // ৪. প্রোপোজাল কালেকশন থেকে ডাটা নিয়ে আসা (ডাটা এনরিচমেন্টের জন্য)
+        // (এখানে আপনার ডিক্লেয়ার করা proposalsCollection এবং tasksCollection এর রেফারেন্স ব্যবহার করবেন)
+        const proposal = await proposalsCollection.findOne({ _id: new ObjectId(proposalId) });
+        
+        if (!proposal) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Associated proposal node not found." 
+            });
+        }
+
+        // ৫. ফ্রন্টএন্ডে পাঠানোর জন্য ডাটা অবজেক্ট তৈরি
+        const verifiedData = {
+            id: session.id,
+            amount: session.amount_total / 100, // স্ট্রাইপ অ্যামাউন্ট সেন্টে (cents) রাখে, তাই ১০০ দিয়ে ভাগ করে ডলারে নেওয়া হলো
+            currency: session.currency,
+            clientEmail: session.customer_details?.email || proposal.client_email,
+            freelancerEmail: proposal.freelancer_email,
+            freelancerName: proposal.freelancer_name || "Verified Expert",
+            taskId: proposal.task_id,
+            taskTitle: proposal.taskTitle || "SkillSwap Project Assignment"
+        };
+
+        // ৬. ফ্রন্টএন্ডে সাকসেস রেসপন্স পাঠানো
+        return res.status(200).json({ 
+            success: true, 
+            message: "Stripe payment successfully verified.", 
+            data: verifiedData 
+        });
+
+    } catch (error) {
+        console.error("Stripe Verification Route Error:", error);
+        return res.status(500).json({ 
+            success: false, 
+            message: "Internal server error during payment verification." 
+        });
+    }
+});
+
+
+// app.all("/api/auth/*", (req, res) => {
+//             if (!auth) {
+//                 return res.status(500).json({ success: false, message: "Auth system not initialized yet." });
+//             }
+//             return auth.handler(req, res);
+//         });
+		await client.db("admin").command({ ping: 1 });
 		console.log(
 			'Pinged your deployment. You successfully connected to MongoDB!',
 		)
