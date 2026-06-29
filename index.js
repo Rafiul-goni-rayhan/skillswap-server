@@ -32,9 +32,6 @@ app.use(express.json())
 app.use(cookieParser())
 
 // -------------------------------------------------------------------------
-// 🛡️ ব্যাকএন্ড ভেরিফিকেশন মিডলওয়্যার (Challenge 2: JWT Verification)
-// -------------------------------------------------------------------------
-// -------------------------------------------------------------------------
 // 🛡️ ব্যাকএন্ড ভেরিফিকেশন মিডলওয়্যার (ম্যানুয়াল JWT + Better-Auth সেশন সাপোর্ট)
 // -------------------------------------------------------------------------
 const verifyToken = async (req, res, next) => {
@@ -52,112 +49,20 @@ const verifyToken = async (req, res, next) => {
                         message: 'Forbidden access. Invalid or expired token.',
                     })
                 }
-                req.user = decoded // ম্যানুয়াল লগইন ইউজার সেট
+                req.user = decoded 
                 return next()
             },
         )
     }
 
-    // ২. টোকেন না থাকলে চেক করা গুগল/সোশ্যাল লগইন (Better-Auth) সেশন
-    // try {
-    //     if (!auth) {
-    //         return res.status(500).json({ success: false, message: "Auth system not initialized yet." })
-    //     }
-
-    //     // Better-Auth থেকে সেশন রিড করা
-    //     const session = await auth.api.getSession({ headers: req.headers })
-        
-    //     if (session && session.user) {
-    //         // 🎯 মোস্ট ক্রিশিয়াল ফিক্স: সেশনের ইমেইল দিয়ে মঙ্গোডিবির মেইন 'users' কালেকশন থেকে ফ্রেশ ডাটা আনা
-    //         const dbUser = await usersCollection.findOne({ 
-    //             email: session.user.email.trim() 
-    //         });
-
-    //         if (dbUser) {
-    //             // ডাটাবেজে যে রোল আছে (যেমন: freelancer বা client), সেটাই এখানে সেট হবে
-    //             req.user = {
-    //                 id: dbUser._id, 
-    //                 email: dbUser.email,
-    //                 role: dbUser.role || session.user.role || 'freelancer' // ডাইনামিক রোল অ্যাসাইনমেন্ট
-    //             }
-    //             return next()
-    //         } else {
-    //             // ডাটাবেজে ইউজার না পাওয়া গেলে সেশনের ডিফল্ট ডাটা ব্যবহার করা
-    //             req.user = {
-    //                 id: session.user.id,
-    //                 email: session.user.email,
-    //                 role: session.user.role || 'freelancer'
-    //             }
-    //             return next()
-    //         }
-    //     }
-    // } catch (sessionErr) {
-    //     console.error("Better-Auth session verification error in middleware:", sessionErr)
-    // }
-
-    // ৩. কোনো অথ মেকানিজমই যদি সেশন খুঁজে না পায়
+ 
     return res
         .status(401)
         .json({ success: false, message: 'Unauthorized access. Token or Session missing.' })
 }
 
 
-// const verifyToken = async (req, res, next) => {
-//     // ১. প্রথমে ম্যানুয়াল লগইনের কাস্টম টোকেন চেক করা
-//     const token = req.cookies?.token
 
-//     if (token) {
-//         return jwt.verify(
-//             token,
-//             process.env.JWT_SECRET || 'super-secret-key',
-//             async (err, decoded) => {
-//                 if (err) {
-//                     return res.status(403).json({
-//                         success: false,
-//                         message: 'Forbidden access. Invalid or expired token.',
-//                     })
-//                 }
-//                 req.user = decoded // ম্যানুয়াল লগইন ইউজার সেট
-//                 return next()
-//             },
-//         )
-//     }
-
-//     // ২. টোকেন না থাকলে চেক করা গুগল লগইন (Better-Auth) সেশন আছে কি না
-//     try {
-//         const session = await auth.getSession({ headers: req.headers })
-        
-//         if (session && session.user) {
-//             // সেশনের ইমেইল দিয়ে মঙ্গোডিবির মেইন 'users' কালেকশন থেকে ডাটা আনা
-//             const dbUser = await usersCollection.findOne({ 
-//                 email: session.user.email.trim() 
-//             });
-
-//             if (dbUser) {
-//                 req.user = {
-//                     id: dbUser._id, // মঙ্গোডিবির ওরিজনাল ObjectId পাস হবে
-//                     email: dbUser.email,
-//                     role: dbUser.role || 'client' // ডাটাবেজের আসল রোল
-//                 }
-//                 return next()
-//             } else {
-//                 req.user = {
-//                     id: session.user.id,
-//                     email: session.user.email,
-//                     role: session.user.role || 'client'
-//                 }
-//                 return next()
-//             }
-//         }
-//     } catch (sessionErr) {
-//         console.error("Better-Auth session verification error in middleware:", sessionErr)
-//     }
-
-//     // ৩. দুটি অথ মেকানিজমই যদি ফেইল করে
-//     return res
-//         .status(401)
-//         .json({ success: false, message: 'Unauthorized access. Token or Session missing.' })
-// }
 
 const client = new MongoClient(uri, {
 	serverApi: {
